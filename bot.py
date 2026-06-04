@@ -1,7 +1,6 @@
 import os
 import base64
 import logging
-import urllib.parse
 import httpx
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -43,10 +42,13 @@ def add_to_history(user_id: int, role: str, content):
 
 
 async def generate_image(prompt: str) -> bytes:
-    encoded = urllib.parse.quote(prompt)
-    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&safe=false"
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.get(url)
+    hf_token = os.environ.get("HF_TOKEN", "")
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+            headers={"Authorization": f"Bearer {hf_token}"},
+            json={"inputs": prompt},
+        )
         response.raise_for_status()
         return response.content
 
