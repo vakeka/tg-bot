@@ -1,6 +1,8 @@
 import os
 import base64
 import logging
+import urllib.parse
+import httpx
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -40,14 +42,23 @@ def add_to_history(user_id: int, role: str, content):
         user_histories[user_id] = history[-MAX_HISTORY:]
 
 
+async def generate_image(prompt: str) -> bytes:
+    encoded = urllib.parse.quote(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.content
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_histories.pop(update.effective_user.id, None)
     await update.message.reply_text(
-        "Привет! Я твой AI-ассистент 🤖\n\n"
+        "Привет! Я твой AI-ассистент\n\n"
         "Я могу:\n"
         "• Отвечать на любые вопросы\n"
         "• Анализировать фотографии\n"
-        "• Помогать с задачами\n"
+        "• Генерировать картинки — напиши /img [описание]\n"
         "• Поддерживать диалог\n\n"
         "Просто напиши мне или отправь фото!"
     )
@@ -56,6 +67,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_histories.pop(update.effective_user.id, None)
     await update.message.reply_text("История очищена. Начнём заново!")
+
+
+async def img(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt:
+        await update.message.reply_text("Напиши что нарисовать: /img котик в космосе")
+        return
+
+    username = update.effective_user.username or update.effective_user.first_name
+    logger.info(f"[{username}]: /img {prompt}")
+    await update.message.chat.send_action("upload_photo")
+
+    try:
+        image_bytes = await generate_image(prompt)
+        await update.message.reply_photo(photo=image_bytes, caption=f'"{prompt}"')
+        logger.info(f"[BOT -> {username}]: сгенерировал изображение")
+    except Exception as e:
+        logger.error(f"Image gen error: {e}")
+        await update.message.reply_text("Не удалось сгенерировать картинку, попробуй ещё раз.")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,6 +163,7 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
+    app.add_handler(CommandHandler("img", img))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     logger.info("Бот запущен...")
