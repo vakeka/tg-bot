@@ -60,7 +60,10 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
     text = update.message.text
+
+    logger.info(f"[{username} ({user_id})]: {text}")
 
     await update.message.chat.send_action("typing")
 
@@ -76,6 +79,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         reply = response.choices[0].message.content
         add_to_history(user_id, "assistant", reply)
+        logger.info(f"[BOT -> {username}]: {reply}")
         await update.message.reply_text(reply)
     except Exception as e:
         logger.error(f"Text error: {e}")
@@ -84,7 +88,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
     caption = update.message.caption or "Что на этом фото? Опиши подробно."
+
+    logger.info(f"[{username} ({user_id})]: [фото] {caption}")
 
     await update.message.chat.send_action("typing")
 
@@ -113,9 +120,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             max_tokens=1024,
         )
         reply = response.choices[0].message.content
-        # Сохраняем в историю как текст
         add_to_history(user_id, "user", f"[отправил фото] {caption}")
         add_to_history(user_id, "assistant", reply)
+        logger.info(f"[BOT -> {username}]: {reply}")
         await update.message.reply_text(reply)
     except Exception as e:
         logger.error(f"Vision error: {e}")
